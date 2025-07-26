@@ -17,6 +17,98 @@ func TestAuthService(t *testing.T) {
 	tokenService := NewTokenService("test-secret-key", time.Hour)
 	authService := NewAuthService(testDB.DB, userService, tokenService)
 
+	t.Run("用户注册成功", func(t *testing.T) {
+		// 清理数据
+		testDB.ClearAllData()
+
+		// 测试用户注册
+		user, token, err := authService.Register("newuser", "newuser@example.com", "password123", "")
+		assert.NoError(t, err)
+		assert.NotNil(t, user)
+		assert.NotEmpty(t, token)
+		assert.Equal(t, "newuser", user.Username)
+		assert.Equal(t, "newuser@example.com", user.Email)
+		assert.Equal(t, uint8(1), user.Status)
+		assert.NotNil(t, user.LastLoginAt)
+
+		// 验证用户已保存到数据库
+		savedUser, err := userService.GetUserByUsername("newuser")
+		assert.NoError(t, err)
+		assert.Equal(t, user.ID, savedUser.ID)
+	})
+
+	t.Run("用户注册成功-带邀请码", func(t *testing.T) {
+		// 清理数据
+		testDB.ClearAllData()
+
+		// 测试带邀请码的用户注册
+		user, token, err := authService.Register("inviteduser", "invited@example.com", "password123", "12345678")
+		assert.NoError(t, err)
+		assert.NotNil(t, user)
+		assert.NotEmpty(t, token)
+		assert.Equal(t, "inviteduser", user.Username)
+		assert.Equal(t, "12345678", user.InvitationCode)
+	})
+
+	t.Run("用户注册失败-用户名已存在", func(t *testing.T) {
+		// 清理数据
+		testDB.ClearAllData()
+
+		// 先注册一个用户
+		_, _, err := authService.Register("existinguser", "existing@example.com", "password123", "")
+		assert.NoError(t, err)
+
+		// 尝试注册相同用户名的用户
+		_, _, err = authService.Register("existinguser", "different@example.com", "password123", "")
+		assert.Error(t, err)
+		assert.Equal(t, "用户名已存在", err.Error())
+	})
+
+	t.Run("用户注册失败-邮箱已存在", func(t *testing.T) {
+		// 清理数据
+		testDB.ClearAllData()
+
+		// 先注册一个用户
+		_, _, err := authService.Register("user1", "same@example.com", "password123", "")
+		assert.NoError(t, err)
+
+		// 尝试注册相同邮箱的用户
+		_, _, err = authService.Register("user2", "same@example.com", "password123", "")
+		assert.Error(t, err)
+		assert.Equal(t, "邮箱已存在", err.Error())
+	})
+
+	t.Run("用户注册失败-无效邀请码", func(t *testing.T) {
+		// 清理数据
+		testDB.ClearAllData()
+
+		// 尝试使用无效邀请码注册
+		_, _, err := authService.Register("user", "user@example.com", "password123", "invalid")
+		assert.Error(t, err)
+		assert.Equal(t, "邀请码无效", err.Error())
+	})
+
+	t.Run("注册后可以正常登录", func(t *testing.T) {
+		// 清理数据
+		testDB.ClearAllData()
+
+		// 注册用户
+		registerUser, registerToken, err := authService.Register("logintest", "logintest@example.com", "password123", "")
+		assert.NoError(t, err)
+		assert.NotEmpty(t, registerToken)
+
+		// 等待1秒确保时间戳不同
+		time.Sleep(time.Second)
+
+		// 使用注册的用户名和密码登录
+		loginUser, loginToken, err := authService.Login("logintest", "password123")
+		assert.NoError(t, err)
+		assert.Equal(t, registerUser.ID, loginUser.ID)
+		assert.NotEmpty(t, loginToken)
+		// 由于时间戳不同，Token应该不同
+		assert.NotEqual(t, registerToken, loginToken)
+	})
+
 	t.Run("用户登录成功", func(t *testing.T) {
 		// 清理数据
 		testDB.ClearAllData()

@@ -14,6 +14,8 @@ import (
 
 // AuthService 认证服务接口
 type AuthService interface {
+	// 用户注册
+	Register(username, email, password, invitationCode string) (*User, string, error)
 	// 用户登录
 	Login(username, password string) (*User, string, error)
 	// 验证Token
@@ -112,6 +114,37 @@ func (s *authService) VerifyPassword(password, hashedPassword string) (bool, err
 
 	// 使用constant time比较防止时序攻击
 	return subtle.ConstantTimeCompare(hash, computedHash) == 1, nil
+}
+
+// Register 用户注册
+func (s *authService) Register(username, email, password, invitationCode string) (*User, string, error) {
+	// 创建用户对象
+	user := &User{
+		Username:       username,
+		Email:          email,
+		PasswordHash:   password, // UserService会自动哈希
+		Status:         1,
+		InvitationCode: invitationCode,
+	}
+
+	// 创建用户
+	err := s.userService.CreateUser(user)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// 生成Token
+	token, err := s.tokenService.GenerateToken(user.ID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	// 设置注册时间为最后登录时间
+	now := time.Now()
+	user.LastLoginAt = &now
+	s.userService.UpdateUser(user)
+
+	return user, token, nil
 }
 
 // Login 用户登录
