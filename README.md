@@ -1,0 +1,2 @@
+# aigo_service_auth
+使用AI开发的Go语言的权限模块服务层
